@@ -3,6 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+// 动态导入Stripe支付组件，避免服务器端渲染问题
+const StripePayment = dynamic(() => import("@/components/StripePayment"), {
+  ssr: false,
+  loading: () => (
+    <div className="animate-pulse bg-gray-200 h-32 rounded-md w-full"></div>
+  ),
+});
+
+// 动态导入测试卡片组件
+const TestCards = dynamic(() => import("@/components/TestCards"), {
+  ssr: false,
+});
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -18,16 +32,31 @@ export default function CheckoutPage() {
     paymentMethod: "credit-card",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [showStripeForm, setShowStripeForm] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // 如果选择了信用卡支付方式，显示Stripe表单
+    if (name === "paymentMethod" && value === "credit-card") {
+      setShowStripeForm(true);
+    } else if (name === "paymentMethod") {
+      setShowStripeForm(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 如果选择了信用卡支付但没有处理Stripe支付，不提交表单
+    if (formData.paymentMethod === "credit-card" && !isSubmitting) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     // 模拟提交订单
@@ -35,6 +64,17 @@ export default function CheckoutPage() {
       setIsSubmitting(false);
       router.push("/order-success");
     }, 1500);
+  };
+
+  const handlePaymentSuccess = () => {
+    // 支付成功后提交表单
+    setPaymentError(null);
+    handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+  };
+
+  const handlePaymentError = (error: string) => {
+    setPaymentError(error);
+    setIsSubmitting(false);
   };
 
   // 模拟订单摘要数据
@@ -293,6 +333,23 @@ export default function CheckoutPage() {
                     </label>
                   </div>
                 </div>
+
+                {/* 信用卡支付表单 */}
+                {showStripeForm && (
+                  <div className="mt-6">
+                    <StripePayment
+                      amount={orderSummary.total}
+                      onSuccess={handlePaymentSuccess}
+                      onError={handlePaymentError}
+                    />
+                    {paymentError && (
+                      <div className="mt-2 text-red-500 text-sm">
+                        {paymentError}
+                      </div>
+                    )}
+                    <TestCards />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -356,17 +413,19 @@ export default function CheckoutPage() {
                 </dl>
 
                 <div className="border-t border-gray-200 py-6 px-4 sm:px-6">
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={`w-full rounded-md border border-transparent ${
-                      isSubmitting
-                        ? "bg-gray-400"
-                        : "bg-indigo-600 hover:bg-indigo-700"
-                    } py-3 px-4 text-base font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50`}
-                  >
-                    {isSubmitting ? "处理中..." : "提交订单"}
-                  </button>
+                  {formData.paymentMethod !== "credit-card" && (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={`w-full rounded-md border border-transparent ${
+                        isSubmitting
+                          ? "bg-gray-400"
+                          : "bg-indigo-600 hover:bg-indigo-700"
+                      } py-3 px-4 text-base font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-50`}
+                    >
+                      {isSubmitting ? "处理中..." : "提交订单"}
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="mt-6 text-center text-sm text-gray-500">
